@@ -1,6 +1,8 @@
 # DeepAsk: Multi-level Mind Tree Platform
 
 This is a top-down, progressively expanding tree-based question and multi-level mind tree platform. The system supports infinite levels of derivative sub-questions, node folding toggles, smooth side navigation lines, and is deeply integrated with Google Gemini and other AI models to provide fully automated node answering and in-depth heuristic sub-question generation.
+![logo](deepask1.png)
+![logo](deepask2.png)
 
 ## 🌟 Features
 
