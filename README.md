@@ -1,10 +1,10 @@
 # DeepAsk: Multi-level Mind Tree Platform
-Your best questions deserve to be seen and grown.
-This app takes one spark of curiosity and digs deeper, layer by layer. It keeps asking why, then why again, until every angle is uncovered. 
-Each question branches into new ones, building a living tree of insight—so you never lose the thread, and you always see the bigger picture.
-Because a great question isn’t an endpoint. It’s a root system.
-Explore it. Expand it. Watch your thinking take shape.
-Welcome to the app that turns wonder into wisdom — one why at a time.
+- Your best questions deserve to be seen and grown.
+- This app takes one spark of curiosity and digs deeper, layer by layer. It keeps asking why, then why again, until every angle is uncovered. 
+- Each question branches into new ones, building a living tree of insight—so you never lose the thread, and you always see the bigger picture.
+- Because a great question isn’t an endpoint. It’s a root system.
+- Explore it. Expand it. Watch your thinking take shape.
+- Welcome to the app that turns wonder into wisdom — one why at a time.
 
 ![logo](deepask1.png)
 ![logo](deepask2.png)
