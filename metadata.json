@@ -1,0 +1,6 @@
+{
+  "name": "多级问题树工坊",
+  "description": "一个自上而下逐级展开的树状提问与多级逻辑解析平台。支持无限层级衍生子提问、折叠开关、流畅的侧导向线，并结合 Google Gemini AI 自动解答和子问题深度启发。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
