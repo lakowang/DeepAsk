@@ -25,6 +25,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
 import "katex/dist/katex.min.css";
 import { makeMarkdownHeadingsCollapsible, parseThinkAndContent, parseAnswersByLanguage } from "./TreeHelper";
 
@@ -1408,7 +1409,7 @@ export function NetworkView({
                                 </summary>
                                 <div className="think-content border-t border-slate-100 dark:border-slate-800 mt-1">
                                   <ReactMarkdown 
-                                    remarkPlugins={[remarkMath]}
+                                    remarkPlugins={[remarkMath, remarkGfm]}
                                     rehypePlugins={[rehypeRaw, rehypeKatex]}
                                   >
                                     {parsed.think}
@@ -1444,7 +1445,7 @@ export function NetworkView({
                             </div>
 
                             <ReactMarkdown
-                              remarkPlugins={[remarkMath]}
+                              remarkPlugins={[remarkMath, remarkGfm]}
                               rehypePlugins={[rehypeRaw, rehypeKatex]}
                               components={{
                                 a: ({ href, children, ...props }) => {

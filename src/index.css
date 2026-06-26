@@ -294,4 +294,42 @@
   color: #94a3b8;
 }
 
+/* Beautiful table styles for markdown tables */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.markdown-body th, .markdown-body td {
+  border: 1px solid #e2e8f0;
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+}
+
+.dark .markdown-body th, .dark .markdown-body td {
+  border-color: #334155;
+}
+
+.markdown-body th {
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.dark .markdown-body th {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
+.markdown-body tr:nth-child(even) {
+  background-color: rgba(248, 250, 252, 0.65);
+}
+
+.dark .markdown-body tr:nth-child(even) {
+  background-color: rgba(30, 41, 59, 0.25);
+}
+
 

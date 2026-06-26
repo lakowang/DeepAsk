@@ -796,6 +796,18 @@ export default function App() {
     });
   };
 
+  useEffect(() => {
+    if (questions.length > 0) {
+      const isChineseSample = questions[0]?.id === "q_root_1" && questions[0]?.text?.includes("人工智能");
+      const isEnglishSample = questions[0]?.id === "q_root_1" && questions[0]?.text?.includes("Artificial Intelligence");
+      if (isChineseSample && lang === "en") {
+        saveTree(createSampleQuestions("en"));
+      } else if (isEnglishSample && lang === "zh") {
+        saveTree(createSampleQuestions("zh"));
+      }
+    }
+  }, [lang]);
+
   // 3. Check AI Provider and Keys status on changes
   const checkAiStatus = (provider: string, apiKey: string, baseUrl: string, model: string, notify = false) => {
     const headers: Record<string, string> = {
@@ -871,7 +883,7 @@ export default function App() {
     const newNode: QuestionNode = {
       id: newId,
       text,
-      ...(enText && { en_text: enText }),
+      en_text: enText || (lang === "en" ? text : undefined),
       answer: "",
       isExpanded: true,
       children: [],
@@ -908,6 +920,7 @@ export default function App() {
     const newRoot: QuestionNode = {
       id: generateId(),
       text: newRootText.trim(),
+      en_text: lang === "en" ? newRootText.trim() : undefined,
       answer: "",
       isExpanded: true,
       children: [],
@@ -944,7 +957,7 @@ export default function App() {
   // Edit node question title text
   const handleEditNodeTitle = (id: string, newText: string) => {
     saveTree((prev) => 
-      updateNodeInTree(prev, id, lang === "en" ? { en_text: newText } : { text: newText })
+      updateNodeInTree(prev, id, lang === "en" ? { text: newText, en_text: newText } : { text: newText })
     );
   };
 

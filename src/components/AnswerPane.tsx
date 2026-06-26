@@ -3,6 +3,7 @@ import Markdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
 import "katex/dist/katex.min.css";
 import { makeMarkdownHeadingsCollapsible, parseThinkAndContent, parseAnswersByLanguage } from "./TreeHelper";
 import { 
@@ -108,6 +109,40 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
   const [subQuestionInput, setSubQuestionInput] = useState("");
   const [shouldAutoAnswerNextNode, setShouldAutoAnswerNextNode] = useState(false);
   const [launchpadText, setLaunchpadText] = useState("");
+
+  // Automatically update input box text if displayLanguage changes while a word is highlighted
+  useEffect(() => {
+    if (!selectedText) return;
+
+    const zhTemplates = [
+      `什么是「${selectedText}」？`,
+      `剖析「${selectedText}」的原理`,
+      `「${selectedText}」的应用`
+    ];
+    const enTemplates = [
+      `What is "${selectedText}"?`,
+      `Analyze principles of "${selectedText}"`,
+      `Applications of "${selectedText}"`
+    ];
+
+    if (displayLanguage === "en") {
+      if (!subQuestionInput || subQuestionInput === zhTemplates[0]) {
+        setSubQuestionInput(enTemplates[0]);
+      } else if (subQuestionInput === zhTemplates[1]) {
+        setSubQuestionInput(enTemplates[1]);
+      } else if (subQuestionInput === zhTemplates[2]) {
+        setSubQuestionInput(enTemplates[2]);
+      }
+    } else {
+      if (!subQuestionInput || subQuestionInput === enTemplates[0]) {
+        setSubQuestionInput(zhTemplates[0]);
+      } else if (subQuestionInput === enTemplates[1]) {
+        setSubQuestionInput(zhTemplates[1]);
+      } else if (subQuestionInput === enTemplates[2]) {
+        setSubQuestionInput(zhTemplates[2]);
+      }
+    }
+  }, [displayLanguage, selectedText]);
 
   // Keep track of the currently selected node ID using a ref to prevent race conditions during updates from async calls
   const selectedNodeIdRef = useRef(selectedNode?.id);
@@ -288,7 +323,7 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
       // Enable sub-question trigger for sensible lengths
       if (text.length > 1 && text.length < 150) {
         setSelectedText(text);
-        setSubQuestionInput(`什么是「${text}」？`);
+        setSubQuestionInput(displayLanguage === "zh" ? `什么是「${text}」？` : `What is "${text}"?`);
       }
     }, 80);
   };
@@ -838,10 +873,16 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-800">
-                    {answeringStage >= 6 ? "解答生成成功！正在写入视图" : "正在通过 AI 引擎生成解答"}
+                    {displayLanguage === "zh" 
+                      ? (answeringStage >= 6 ? "解答生成成功！正在写入视图" : "正在通过 AI 引擎生成解答")
+                      : (answeringStage >= 6 ? "Answer generated successfully! Writing to view" : "Generating answer via AI engine...")
+                    }
                   </h3>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    {answeringStage >= 6 ? "所有排版流程已完成" : "请稍候，解答将自动排版并更新本节点"}
+                    {displayLanguage === "zh"
+                      ? (answeringStage >= 6 ? "所有排版流程已完成" : "请稍候，解答将自动排版并更新本节点")
+                      : (answeringStage >= 6 ? "Formatting completed" : "Please wait, the answer will be formatted and updated automatically")
+                    }
                   </p>
                 </div>
               </div>
@@ -851,7 +892,9 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
                 }`}>
                   {answeringPercent}%
                 </span>
-                <p className="text-[10px] text-slate-400 font-medium font-mono">已耗时 {elapsedSeconds.toFixed(1)}s</p>
+                <p className="text-[10px] text-slate-400 font-medium font-mono">
+                  {displayLanguage === "zh" ? `已耗时 ${elapsedSeconds.toFixed(1)}s` : `Elapsed: ${elapsedSeconds.toFixed(1)}s`}
+                </p>
               </div>
             </div>
 
@@ -869,13 +912,19 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
 
             {/* Stages Step List */}
             <div className="grid grid-cols-1 gap-2.5 pt-1">
-              {[
+              {(displayLanguage === "zh" ? [
                 { stage: 1, text: "初始化 AI 引擎服务，进行安全握手与通道调度..." },
                 { stage: 2, text: "深度剖解当前大纲节点在全景多层级关联树中的上下文脉络..." },
                 { stage: 3, text: "启航大脑提问解析：建立并设计学术/专业级逻辑解答模型..." },
                 { stage: 4, text: "修辞磨洗打磨，撰写该级提问对应的核心答复论点与论据演绎..." },
                 { stage: 5, text: "整合答复并进行最终 Markdown 格式精细排版，完美注入视图..." }
-              ].map((step) => {
+              ] : [
+                { stage: 1, text: "Initializing AI engine service, establishing secure handshake and channel scheduling..." },
+                { stage: 2, text: "Analyzing the context of the current node in the panoramic multi-level tree..." },
+                { stage: 3, text: "Parsing question: Designing an academic/professional level logical answer model..." },
+                { stage: 4, text: "Refining phrasing: Writing core thesis statements and deductive arguments..." },
+                { stage: 5, text: "Integrating the answer and formatting Markdown, rendering in the view..." }
+              ]).map((step) => {
                 const isActive = answeringStage === step.stage;
                 const isCompleted = answeringStage > step.stage;
                 return (
@@ -943,7 +992,7 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
                         </summary>
                         <div className="think-content border-t border-slate-100 dark:border-slate-800 mt-1">
                           <Markdown 
-                            remarkPlugins={[remarkMath]}
+                            remarkPlugins={[remarkMath, remarkGfm]}
                             rehypePlugins={[rehypeRaw, rehypeKatex]}
                           >
                             {parsed.think}
@@ -953,7 +1002,7 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
                     )}
 
                     <Markdown
-                      remarkPlugins={[remarkMath]}
+                      remarkPlugins={[remarkMath, remarkGfm]}
                       rehypePlugins={[rehypeRaw, rehypeKatex]}
                       components={{
                         a: ({ href, children, ...props }) => {

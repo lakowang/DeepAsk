@@ -333,7 +333,33 @@ Please follow these guidelines strictly:
         ? (lang === "zh" ? `当前路径上下文: ${context.join(" > ")}` : `Current Context Path: ${context.join(" > ")}`)
         : (lang === "zh" ? "无上层路径" : "No parent path");
 
-      const prompt = `您是一个思维启发和逻辑追问大师。
+      const prompt = lang === "en" ? `You are a master of thought-provocation and logical follow-up questions.
+We are currently in a "Question Tree-View Inspector Panel".
+[CURRENT CONTEXT PATH]: ${pathContext}
+[CURRENT SELECTED QUESTION]: "${text}"
+
+To help the user drill down deeper into this topic (supporting infinite levels of follow-up child questions), please brainstorm 3 to 5 highly relevant, high-value "derivative child questions".
+Note: These child questions should be more microscopic, specific, and analytical than the current question.
+
+Please strictly follow these guidelines:
+- Since the current language environment is English (en), you MUST write the "en_text" and "en_reason" fields in natural, high-quality, academic English. The "text" and "reason" fields should contain a brief Chinese translation/equivalent of them.
+- You MUST return a valid JSON object. Do NOT include markdown wrappers, preambles, or backticks.
+
+Expected JSON Structure:
+{
+  "suggestions": [
+    {
+      "text": "Brief Chinese translation of the sub-question (under 20 characters)",
+      "reason": "Brief Chinese translation of why this follow-up is valuable (under 50 characters)",
+      "en_text": "Micro-derivative child question in fluent academic English, precise and short",
+      "en_reason": "Explanation of why this follow-up is valuable in fluent English"
+    }
+  ]
+}
+
+Language setting: English (en)
+
+JSON Output:` : `您是一个思维启发和逻辑追问大师。
 当前我们在一个“问题 tree-view 剖析面板”中。
 【当前问题上下文】：${pathContext}
 【当前选择剖析的问题】："${text}"
@@ -358,7 +384,7 @@ Please follow these guidelines strictly:
   ]
 }
 
-当前语言环境: ${lang === "en" ? "英文 (en)" : "中文 (zh)"}
+当前语言环境: 中文 (zh)
 
 输出的 JSON:`;
 

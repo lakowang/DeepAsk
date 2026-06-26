@@ -1,13 +1,6 @@
 # DeepAsk: Multi-level Mind Tree Platform
-- Your best questions deserve to be seen and grown.
-- This app takes one spark of curiosity and digs deeper, layer by layer. It keeps asking why, then why again, until every angle is uncovered. 
-- Each question branches into new ones, building a living tree of insight—so you never lose the thread, and you always see the bigger picture.
-- Because a great question isn’t an endpoint. It’s a root system.
-- Explore it. Expand it. Watch your thinking take shape.
-- Welcome to the app that turns wonder into wisdom — one why at a time.
 
-![logo](deepask1.png)
-![logo](deepask2.png)
+This is a top-down, progressively expanding tree-based question and multi-level mind tree platform. The system supports infinite levels of derivative sub-questions, node folding toggles, smooth side navigation lines, and is deeply integrated with Google Gemini and other AI models to provide fully automated node answering and in-depth heuristic sub-question generation.
 
 ## 🌟 Features
 
@@ -15,6 +8,8 @@
 - **Deep AI Integration**: Supports one-click AI-generated in-depth answers for nodes, and can heuristically generate lower-level sub-questions based on the current node's context.
 - **Multi-Model Support**: Built-in support for Google Gemini, OpenAI, DeepSeek, Anthropic (Claude), MiniMax, and other large language models.
 - **Text Selection Follow-up**: Supports selecting specific text within the answer pane; the AI will automatically generate related sub-question recommendations for you.
+- **Bilingual & Smart Adaptation**: Full bilingual support (Chinese & English) for all UI components, buttons, menus, and modals. The system automatically initializes and synchronizes the built-in sample question tree to match the selected display language.
+- **Responsive Modern UI**: Built with React 18, combined with Tailwind CSS for beautiful typography, and includes multiple built-in rendering themes (e.g., Zen, Geeker).
 - **Privacy & Security First**: If users prefer not to provide a global backend Key, they can bind their own API keys for various models in the frontend unified settings. Key information is securely saved within the browser's local sandbox (`LocalStorage`).
 
 ## 🛠️ Tech Stack
