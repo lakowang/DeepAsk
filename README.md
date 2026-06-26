@@ -1,6 +1,13 @@
 # DeepAsk: Multi-level Mind Tree Platform
 
-This is a top-down, progressively expanding tree-based question and multi-level mind tree platform. The system supports infinite levels of derivative sub-questions, node folding toggles, smooth side navigation lines, and is deeply integrated with Google Gemini and other AI models to provide fully automated node answering and in-depth heuristic sub-question generation.
+- Your best questions deserve to be seen and grown.
+- This app takes one spark of curiosity and digs deeper, layer by layer. It keeps asking why, then why again, until every angle is uncovered. 
+- Each question branches into new ones, building a living tree of insight—so you never lose the thread, and you always see the bigger picture.
+- Because a great question isn’t an endpoint. It’s a root system.
+- Explore it. Expand it. Watch your thinking take shape.
+- Welcome to the app that turns wonder into wisdom — one why at a time.
+![logo](deepask1.png)
+![logo](deepask2.png)
 
 ## 🌟 Features
 
