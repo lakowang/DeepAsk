@@ -31,7 +31,7 @@ interface AnswerPaneProps {
   selectedNode: QuestionNode | null;
   nodePath: { id: string; name: string }[] | null;
   onUpdateAnswer: (id: string, newAnswer: string) => void;
-  onAddChild: (parentId: string, text: string, selectedText?: string, enText?: string) => void;
+  onAddChild: (parentId: string, text: string, selectedText?: string, enText?: string, autoSelect?: boolean) => void;
   globalBackgroundTasks?: Record<string, any>;
   onTriggerAIDeepAnswer?: (id: string) => void;
   onNavigateToNode?: (id: string) => void;
@@ -590,7 +590,7 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
   };
 
   const handleAddSuggestedChild = (suggestion: AISuggestion) => {
-    onAddChild(selectedNode.id, suggestion.text, undefined, suggestion.en_text);
+    onAddChild(selectedNode.id, suggestion.text, undefined, suggestion.en_text, false);
     // Remove the added suggestion from list
     setAiSuggestions(prev => prev.filter(item => item.text !== suggestion.text));
   };
@@ -1185,7 +1185,7 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
               type="button"
               onClick={() => {
                 const finalTitle = subQuestionInput.trim() || (displayLanguage === "zh" ? `深入追问: ${selectedText}` : `Deep Follow-up: ${selectedText}`);
-                onAddChild(selectedNode.id, finalTitle, selectedText);
+                onAddChild(selectedNode.id, finalTitle, selectedText, undefined, false);
                 setSelectedText("");
               }}
               className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded text-[11px] font-medium flex items-center gap-1 cursor-pointer transition"
@@ -1199,8 +1199,7 @@ export const AnswerPane: React.FC<AnswerPaneProps> = ({
               disabled={isGeneratingAnswer}
               onClick={() => {
                 const finalTitle = subQuestionInput.trim() || (displayLanguage === "zh" ? `什么是「${selectedText}」？` : `What is "${selectedText}"?`);
-                setShouldAutoAnswerNextNode(true);
-                onAddChild(selectedNode.id, finalTitle, selectedText);
+                onAddChild(selectedNode.id, finalTitle, selectedText, undefined, false);
                 setSelectedText("");
               }}
               className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shadow-2xs hover:shadow-xs"

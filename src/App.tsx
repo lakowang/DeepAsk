@@ -40,7 +40,8 @@ import {
   findNodeAndGetSubtreeIds,
   cleanMarkdownLinksForDeletedIds,
   expandAncestorsInTree,
-  findSiblings
+  findSiblings,
+  parseThinkAndContent
 } from "./components/TreeHelper";
 import { TreeNodeComponent } from "./components/TreeNodeComponent";
 import { AnswerPane } from "./components/AnswerPane";
@@ -719,6 +720,7 @@ export default function App() {
   const [downloadMode, setDownloadMode] = useState<"only_questions" | "questions_and_answers">("only_questions");
   const [downloadSelectionMode, setDownloadSelectionMode] = useState<"all" | "custom">("all");
   const [selectedNodeIdsForExport, setSelectedNodeIdsForExport] = useState<Record<string, boolean>>({});
+  const [includeThink, setIncludeThink] = useState(true);
 
   // Import "Your Property" settings and states
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -878,7 +880,7 @@ export default function App() {
   // --- Tree Event Dispatchers ---
 
   // Add sub-question under parentId with optional selected text hyperlink support
-  const handleAddChildNode = (parentId: string, text: string, selectedText?: string, enText?: string) => {
+  const handleAddChildNode = (parentId: string, text: string, selectedText?: string, enText?: string, autoSelect = true) => {
     const newId = generateId();
     const newNode: QuestionNode = {
       id: newId,
@@ -906,7 +908,9 @@ export default function App() {
     });
     
     // Auto-select the newly added child for prompt editing
-    setSelectedNodeId(newId);
+    if (autoSelect) {
+      setSelectedNodeId(newId);
+    }
     
     // Auto-trigger AI answer
     triggerAIAnswer(newId, newNode);
@@ -1526,7 +1530,12 @@ export default function App() {
             result += `> **大纲深度**: Level ${depth} | **课题状态**: ${statusLabel}\n\n`;
             
             if (node.answer && node.answer.trim()) {
-              result += `${node.answer.trim()}\n\n`;
+              let finalAns = node.answer.trim();
+              if (!includeThink) {
+                const parsed = parseThinkAndContent(finalAns);
+                finalAns = parsed.content.trim();
+              }
+              result += `${finalAns}\n\n`;
             } else {
               result += `*（此课题暂无解答内容或尚未调用 AI 生成）*\n\n`;
             }
@@ -3164,8 +3173,54 @@ export default function App() {
                       {lang === "zh" ? "仅提取结构化提问树大纲层级目录 (.md 格式)，便于研究框架二次复用。" : "Extract only the structured question tree outline hierarchy (.md format), facilitating the secondary reuse of the research framework."}
                     </span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDownloadMode("questions_and_answers")}
+                    className={`p-3.5 rounded-lg border text-left cursor-pointer transition flex flex-col justify-between h-24 ${
+                      downloadMode === "questions_and_answers"
+                        ? "border-indigo-600 bg-indigo-50/40 shadow-xs ring-1 ring-indigo-600"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-bold text-slate-900">{lang === "zh" ? "导出大纲与答卷" : "Export outline and answers"}</span>
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        downloadMode === "questions_and_answers" ? "border-indigo-600 bg-indigo-600" : "border-slate-300"
+                      }`}>
+                        {downloadMode === "questions_and_answers" && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 leading-normal">
+                      {lang === "zh" ? "包含树大纲，以及每个疑问下 AI 撰写的详细解答内容与深度追问逻辑。" : "Includes both the question tree outline and the detailed AI answers/derivations for each topic."}
+                    </span>
+                  </button>
                 </div>
               </div>
+
+              {/* Toggle to include think-reasoning blocks */}
+              {downloadMode === "questions_and_answers" && (
+                <div className="bg-slate-50 border border-slate-200/60 rounded-lg p-3 flex items-start gap-2.5 font-sans transition-all duration-200">
+                  <input
+                    id="include-think-toggle"
+                    type="checkbox"
+                    checked={includeThink}
+                    onChange={(e) => setIncludeThink(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer mt-0.5"
+                  />
+                  <div className="flex flex-col select-none">
+                    <label htmlFor="include-think-toggle" className="text-xs font-bold text-slate-800 cursor-pointer">
+                      {lang === "zh" ? "包含 <think> 深度思考推理过程" : "Include think-reasoning process blocks"}
+                    </label>
+                    <span className="text-[10px] text-slate-400 leading-normal mt-0.5">
+                      {lang === "zh" 
+                        ? "勾选以在导出的 Markdown 答卷中保留 AI 引擎生成的思考与推理步骤。若取消勾选，仅导出最终干净的解答。"
+                        : "Check to retain the AI-generated deep thoughts/reasoning logic (<think>...</think>) in the exported Markdown file. If unchecked, only final answers will be saved."
+                      }
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Option Class 2: Selection Scope */}
               <div className="space-y-1.5 font-sans">
