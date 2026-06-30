@@ -47,6 +47,18 @@ import { TreeNodeComponent } from "./components/TreeNodeComponent";
 import { AnswerPane } from "./components/AnswerPane";
 import { NetworkView } from "./components/NetworkView";
 import { LayoutDivider } from "./components/LayoutDivider";
+import {
+  initAuth,
+  googleSignIn,
+  googleSignOut,
+  listDriveBackups,
+  uploadBackupToDrive,
+  downloadBackupFromDrive,
+  deleteBackupFromDrive,
+  DriveFile
+} from "./lib/driveService";
+import { User } from "firebase/auth";
+import { Cloud, CloudUpload, CloudDownload, RefreshCcw } from "lucide-react";
 
 // --- START OF FILE IMPORT & DEDUPLICATION PARSING UTILITIES ---
 
@@ -466,7 +478,7 @@ const translations = {
     zen: "量浅禅意",
     scientist: "科学实证",
     unifiedSettings: "系统控制台",
-    dataOperations: "数据资产包操作",
+    dataOperations: "本地数据导入 / 导出 (文件)",
     apiIndicator: "智能引擎 API",
   },
   en: {
@@ -505,7 +517,7 @@ const translations = {
     zen: "Zen Master",
     scientist: "Scientist",
     unifiedSettings: "Control Center",
-    dataOperations: "Data Operations",
+    dataOperations: "Local Data Import / Export (File)",
     apiIndicator: "AI Engine",
   }
 };
@@ -729,6 +741,33 @@ export default function App() {
   const [parsedNodes, setParsedNodes] = useState<QuestionNode[]>([]);
   const [importError, setImportError] = useState("");
 
+  // Google Drive state variables
+  const [driveUser, setDriveUser] = useState<User | null>(null);
+  const [driveToken, setDriveToken] = useState<string | null>(null);
+  const [driveBackups, setDriveBackups] = useState<DriveFile[]>([]);
+  const [isDriveLoading, setIsDriveLoading] = useState(false);
+  const [isDriveSaving, setIsDriveSaving] = useState(false);
+  const [isDriveRestoring, setIsDriveRestoring] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+
+  // Google Drive custom dialog state
+  const [driveDialog, setDriveDialog] = useState<{
+    isOpen: boolean;
+    type: "save_prompt" | "confirm_restore" | "confirm_delete" | "alert";
+    title: string;
+    message: string;
+    inputValue?: string;
+    fileToRestore?: DriveFile;
+    fileToDelete?: DriveFile;
+    onConfirm?: (val?: string) => void;
+  }>({
+    isOpen: false,
+    type: "alert",
+    title: "",
+    message: "",
+    inputValue: "",
+  });
+
   // Custom Confirmation Modals to replace standard window.confirm in iframes
   const [deleteConfirmInfo, setDeleteConfirmInfo] = useState<{
     isOpen: boolean;
@@ -744,7 +783,236 @@ export default function App() {
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
+  // Initialize Google Auth state listener
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user, token) => {
+        setDriveUser(user);
+        setDriveToken(token);
+        // Automatically fetch backups if token is available
+        fetchBackups(token);
+      },
+      () => {
+        setDriveUser(null);
+        setDriveToken(null);
+        setDriveBackups([]);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
+  // Fetch backups list
+  const fetchBackups = async (token: string) => {
+    setIsDriveLoading(true);
+    setDriveError(null);
+    try {
+      const backups = await listDriveBackups(token);
+      setDriveBackups(backups);
+    } catch (err: any) {
+      setDriveError(err?.message || "Failed to fetch backups");
+    } finally {
+      setIsDriveLoading(false);
+    }
+  };
+
+  // Google Sign-In
+  const handleDriveSignIn = async () => {
+    setIsDriveLoading(true);
+    setDriveError(null);
+    try {
+      const result = await googleSignIn();
+      if (result) {
+        setDriveUser(result.user);
+        setDriveToken(result.accessToken);
+        await fetchBackups(result.accessToken);
+      }
+    } catch (err: any) {
+      setDriveError(err?.message || "Failed to sign in with Google");
+    } finally {
+      setIsDriveLoading(false);
+    }
+  };
+
+  // Google Sign-Out
+  const handleDriveSignOut = async () => {
+    setIsDriveLoading(true);
+    try {
+      await googleSignOut();
+      setDriveUser(null);
+      setDriveToken(null);
+      setDriveBackups([]);
+    } catch (err: any) {
+      setDriveError(err?.message || "Failed to sign out");
+    } finally {
+      setIsDriveLoading(false);
+    }
+  };
+
+  // Save backup to Drive
+  const handleSaveToDrive = async () => {
+    if (!driveToken) {
+      setDriveDialog({
+        isOpen: true,
+        type: "alert",
+        title: lang === "zh" ? "账号未连接" : "Account Disconnected",
+        message: lang === "zh" ? "请先登录 Google 账号！" : "Please sign in to Google first!"
+      });
+      return;
+    }
+    if (questions.length === 0) {
+      setDriveDialog({
+        isOpen: true,
+        type: "alert",
+        title: lang === "zh" ? "空数据提问树" : "Empty Question Tree",
+        message: lang === "zh" ? "当前问题树为空，无法备份。" : "Current tree is empty, cannot backup."
+      });
+      return;
+    }
+
+    const now = new Date();
+    const formattedDate = now.toISOString().replace(/T/, "_").replace(/\..+/, "").replace(/:/g, "-");
+    const defaultName = `DeepAsk_Backup_${formattedDate}.json`;
+    
+    setDriveDialog({
+      isOpen: true,
+      type: "save_prompt",
+      title: lang === "zh" ? "保存备份到云端" : "Backup to Google Drive",
+      message: lang === "zh" ? "请输入云端备份文件名：" : "Please enter the cloud backup filename:",
+      inputValue: defaultName,
+      onConfirm: async (filename) => {
+        if (!filename || !filename.trim()) return;
+        setIsDriveSaving(true);
+        setDriveError(null);
+        try {
+          const serializedData = JSON.stringify(questions, null, 2);
+          await uploadBackupToDrive(driveToken, filename.trim(), serializedData);
+          setDriveDialog({
+            isOpen: true,
+            type: "alert",
+            title: lang === "zh" ? "云端备份成功" : "Cloud Backup Succeeded",
+            message: lang === "zh" ? `备份「${filename.trim()}」已成功保存至 Google Drive！` : `Backup "${filename.trim()}" successfully saved to Google Drive!`
+          });
+          await fetchBackups(driveToken);
+        } catch (err: any) {
+          setDriveError(err?.message || "Failed to upload backup");
+          setDriveDialog({
+            isOpen: true,
+            type: "alert",
+            title: lang === "zh" ? "备份失败" : "Backup Failed",
+            message: lang === "zh" ? `备份失败: ${err?.message}` : `Backup failed: ${err?.message}`
+          });
+        } finally {
+          setIsDriveSaving(false);
+        }
+      }
+    });
+  };
+
+  // Restore backup from Drive
+  const handleRestoreFromDrive = async (file: DriveFile, strategy: "overwrite" | "merge") => {
+    if (!driveToken) return;
+
+    const actionText = strategy === "overwrite" 
+      ? (lang === "zh" ? "完全覆盖/替换当前的问题树" : "completely overwrite and replace the current tree")
+      : (lang === "zh" ? "合并去重到当前的问题树中" : "merge and deduplicate into the current tree");
+
+    setDriveDialog({
+      isOpen: true,
+      type: "confirm_restore",
+      title: lang === "zh" ? "从云端恢复备份" : "Restore from Cloud Backup",
+      message: lang === "zh" 
+        ? `确认从云端备份「${file.name}」恢复吗？这将${actionText}。`
+        : `Are you sure you want to restore from "${file.name}"? This will ${actionText}.`,
+      fileToRestore: file,
+      onConfirm: async () => {
+        setIsDriveRestoring(true);
+        setDriveError(null);
+        try {
+          const backupData = await downloadBackupFromDrive(driveToken, file.id);
+          if (!Array.isArray(backupData)) {
+            throw new Error(lang === "zh" ? "云端文件不是有效的提问树数组格式。" : "The cloud file is not a valid question tree array format.");
+          }
+
+          if (strategy === "overwrite") {
+            saveTree(backupData);
+            if (backupData.length > 0) {
+              setTimeout(() => setInitialSelection(backupData), 0);
+            }
+            setDriveDialog({
+              isOpen: true,
+              type: "alert",
+              title: lang === "zh" ? "恢复成功" : "Restore Succeeded",
+              message: lang === "zh" ? "已成功完全覆盖恢复当前提问树！" : "Successfully restored and replaced the current tree!"
+            });
+          } else {
+            // Merge strategy
+            saveTree((prev) => {
+              const merged = mergeTrees(prev, backupData, "merge_skip");
+              if (merged.length > 0) {
+                setTimeout(() => setInitialSelection(merged), 0);
+              }
+              return merged;
+            });
+            setDriveDialog({
+              isOpen: true,
+              type: "alert",
+              title: lang === "zh" ? "智能合并成功" : "Merge Succeeded",
+              message: lang === "zh" ? "已成功智能合并云端备份到当前提问树！" : "Successfully merged cloud backup into the current tree!"
+            });
+          }
+        } catch (err: any) {
+          setDriveError(err?.message || "Failed to restore backup");
+          setDriveDialog({
+            isOpen: true,
+            type: "alert",
+            title: lang === "zh" ? "恢复失败" : "Restore Failed",
+            message: lang === "zh" ? `恢复失败: ${err?.message}` : `Restore failed: ${err?.message}`
+          });
+        } finally {
+          setIsDriveRestoring(false);
+        }
+      }
+    });
+  };
+
+  // Delete backup from Drive
+  const handleDeleteFromDrive = async (file: DriveFile) => {
+    if (!driveToken) return;
+
+    setDriveDialog({
+      isOpen: true,
+      type: "confirm_delete",
+      title: lang === "zh" ? "删除云端备份" : "Delete Cloud Backup",
+      message: lang === "zh"
+        ? `确认从 Google Drive 永久删除该备份「${file.name}」吗？此操作无法撤销。`
+        : `Are you sure you want to permanently delete the backup "${file.name}" from Google Drive? This cannot be undone.`,
+      fileToDelete: file,
+      onConfirm: async () => {
+        setIsDriveLoading(true);
+        setDriveError(null);
+        try {
+          await deleteBackupFromDrive(driveToken, file.id);
+          setDriveDialog({
+            isOpen: true,
+            type: "alert",
+            title: lang === "zh" ? "删除成功" : "Delete Succeeded",
+            message: lang === "zh" ? "已成功从云端删除该备份文件。" : "Successfully deleted the backup file from Google Drive."
+          });
+          await fetchBackups(driveToken);
+        } catch (err: any) {
+          setDriveError(err?.message || "Failed to delete backup");
+          setDriveDialog({
+            isOpen: true,
+            type: "alert",
+            title: lang === "zh" ? "删除失败" : "Delete Failed",
+            message: lang === "zh" ? `删除失败: ${err?.message}` : `Delete failed: ${err?.message}`
+          });
+        } finally {
+          setIsDriveLoading(false);
+        }
+      }
+    });
+  };
 
   const parsedStats = useMemo(() => {
     let count = 0;
@@ -2797,6 +3065,140 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* 5. Google Drive Cloud Sync Section */}
+                  <div className="space-y-1.5 pb-1 border-t border-slate-150 pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {lang === "zh" ? "Google Drive 云端备份与恢复" : "Google Drive Cloud Backup & Restore"}
+                      </span>
+                      {driveUser && (
+                        <button
+                          onClick={handleDriveSignOut}
+                          className="text-[9px] text-rose-500 hover:text-rose-700 transition cursor-pointer font-bold"
+                        >
+                          {lang === "zh" ? "退出登录" : "Sign Out"}
+                        </button>
+                      )}
+                    </div>
+
+                    {!driveUser ? (
+                      <button
+                        onClick={handleDriveSignIn}
+                        disabled={isDriveLoading}
+                        className="w-full py-2 px-3 border border-slate-200 rounded-lg flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11px] cursor-pointer shadow-3xs transition disabled:opacity-50"
+                      >
+                        {isDriveLoading ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                        ) : (
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
+                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                          </svg>
+                        )}
+                        <span>
+                          {isDriveLoading 
+                            ? (lang === "zh" ? "正在连接..." : "Connecting...") 
+                            : (lang === "zh" ? "连接 Google 云盘" : "Connect Google Drive")
+                          }
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 bg-slate-50 p-1.5 rounded border border-slate-100">
+                          <span className="truncate max-w-[170px] font-mono">👤 {driveUser.email}</span>
+                          <button
+                            onClick={() => fetchBackups(driveToken!)}
+                            title={lang === "zh" ? "刷新云端备份列表" : "Refresh cloud list"}
+                            className="text-slate-400 hover:text-indigo-600 transition p-0.5"
+                          >
+                            <RefreshCcw className={`w-3 h-3 ${isDriveLoading ? "animate-spin text-indigo-600" : ""}`} />
+                          </button>
+                        </div>
+
+                        {/* Backup action */}
+                        <button
+                          onClick={handleSaveToDrive}
+                          disabled={isDriveSaving}
+                          className="w-full py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center justify-center gap-1.5 font-bold text-xs cursor-pointer shadow-2xs hover:shadow-xs transition disabled:opacity-50"
+                        >
+                          {isDriveSaving ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <CloudUpload className="w-3.5 h-3.5" />
+                          )}
+                          <span>{lang === "zh" ? "备份数据到云端" : "Backup to Cloud Drive"}</span>
+                        </button>
+
+                        {/* Cloud Backups list */}
+                        <div className="space-y-1">
+                          <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                            {lang === "zh" ? "云端备份历史" : "Cloud Backup History"}
+                          </span>
+
+                          {isDriveLoading && driveBackups.length === 0 ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2">
+                              {lang === "zh" ? "正在获取云端备份..." : "Fetching backups..."}
+                            </div>
+                          ) : driveBackups.length === 0 ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2 border border-dashed border-slate-150 rounded-lg bg-slate-50/50">
+                              {lang === "zh" ? "无云端备份" : "No backups found"}
+                            </div>
+                          ) : (
+                            <div className="max-h-36 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                              {driveBackups.map((file) => {
+                                const createdDate = file.createdTime 
+                                  ? new Date(file.createdTime).toLocaleString(lang === "zh" ? "zh-CN" : "en-US", {
+                                      month: "numeric",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit"
+                                    })
+                                  : "";
+                                return (
+                                  <div key={file.id} className="p-1.5 border border-slate-150 rounded bg-slate-50/30 hover:bg-slate-50 flex flex-col gap-1 transition">
+                                    <div className="flex items-start justify-between gap-1">
+                                      <span className="text-[10px] font-bold text-slate-700 truncate block max-w-[170px]" title={file.name}>
+                                        {file.name}
+                                      </span>
+                                      <button
+                                        onClick={() => handleDeleteFromDrive(file)}
+                                        className="text-slate-400 hover:text-rose-600 transition p-0.5 shrink-0 cursor-pointer"
+                                        title={lang === "zh" ? "删除此备份" : "Delete backup"}
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[8px] text-slate-400">
+                                      <span>{createdDate}</span>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => handleRestoreFromDrive(file, "overwrite")}
+                                          className="px-1 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded font-bold transition cursor-pointer"
+                                          title={lang === "zh" ? "完全覆盖/恢复" : "Completely replace current tree"}
+                                        >
+                                          {lang === "zh" ? "覆盖" : "Replace"}
+                                        </button>
+                                        <button
+                                          onClick={() => handleRestoreFromDrive(file, "merge")}
+                                          className="px-1 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded font-bold transition cursor-pointer"
+                                          title={lang === "zh" ? "合并去重到当前" : "Merge into current tree"}
+                                        >
+                                          {lang === "zh" ? "合并" : "Merge"}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                 </div>
               </>
             )}
@@ -3289,6 +3691,35 @@ export default function App() {
 
             {/* Footer Buttons */}
             <div className="flex items-center justify-end gap-2.5 pt-3.5 border-t border-slate-100 shrink-0 font-sans">
+              {driveUser ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDownloadOpen(false);
+                    handleSaveToDrive();
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-md text-xs font-bold cursor-pointer transition flex items-center gap-1.5"
+                  title={lang === "zh" ? "备份当前数据到 Google Drive" : "Backup current data to Google Drive"}
+                >
+                  <CloudUpload className="w-3.5 h-3.5" />
+                  <span>{lang === "zh" ? "备份至云端" : "Save to Cloud Drive"}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDownloadOpen(false);
+                    handleDriveSignIn().then(() => {
+                      setIsSettingsMenuOpen(true);
+                    });
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-xs font-bold cursor-pointer transition flex items-center gap-1.5"
+                  title={lang === "zh" ? "登录 Google Drive 同步" : "Login to Google Drive for sync"}
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>{lang === "zh" ? "连接云端备份" : "Connect Cloud Backup"}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsDownloadOpen(false)}
@@ -3445,6 +3876,97 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Google Drive Option inside Import Modal */}
+              <div className="pt-3 border-t border-slate-200 font-sans space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                    <Cloud className="w-3.5 h-3.5 text-indigo-500" />
+                    {lang === "zh" ? "或者：从 Google Drive 云端恢复/合并" : "Or: Restore/Merge from Google Drive"}
+                  </span>
+                  {driveUser && (
+                    <button
+                      onClick={() => fetchBackups(driveToken!)}
+                      className="text-[9px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      {lang === "zh" ? "刷新列表" : "Refresh"}
+                    </button>
+                  )}
+                </div>
+
+                {!driveUser ? (
+                  <button
+                    type="button"
+                    onClick={handleDriveSignIn}
+                    className="w-full py-2.5 rounded-lg border border-slate-200 flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 transition font-bold text-[11px] cursor-pointer shadow-3xs"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                    </svg>
+                    <span>{lang === "zh" ? "连接 Google 云盘读取备份" : "Connect Google Drive to load backups"}</span>
+                  </button>
+                ) : (
+                  <div className="space-y-1.5">
+                    {isDriveLoading && driveBackups.length === 0 ? (
+                      <div className="text-[10px] text-slate-400 italic text-center py-2">
+                        {lang === "zh" ? "正在获取云端备份..." : "Fetching backups..."}
+                      </div>
+                    ) : driveBackups.length === 0 ? (
+                      <div className="text-[10px] text-slate-400 italic text-center py-2 border border-dashed border-slate-150 rounded-lg bg-slate-50/50">
+                        {lang === "zh" ? "无云端备份" : "No backups found"}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto pr-1 scrollbar-thin">
+                        {driveBackups.map((file) => {
+                          const createdDate = file.createdTime 
+                            ? new Date(file.createdTime).toLocaleString(lang === "zh" ? "zh-CN" : "en-US", {
+                                month: "numeric",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })
+                            : "";
+                          return (
+                            <div key={file.id} className="p-2 border border-slate-150 rounded-lg bg-slate-50/40 hover:bg-slate-50 flex items-center justify-between gap-2 transition">
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-slate-700 truncate max-w-[180px]" title={file.name}>
+                                  {file.name}
+                                </p>
+                                <p className="text-[9px] text-slate-400 mt-0.5">{createdDate}</p>
+                              </div>
+                              <div className="flex gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsImportOpen(false);
+                                    handleRestoreFromDrive(file, "overwrite");
+                                  }}
+                                  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold transition cursor-pointer"
+                                >
+                                  {lang === "zh" ? "覆盖" : "Replace"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsImportOpen(false);
+                                    handleRestoreFromDrive(file, "merge");
+                                  }}
+                                  className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[10px] font-bold transition cursor-pointer"
+                                >
+                                  {lang === "zh" ? "合并" : "Merge"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
             </div>
 
             {/* Footer Buttons */}
@@ -3598,6 +4120,85 @@ export default function App() {
               >
                 {lang === "zh" ? "全部清空" : "Clear All"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Custom Google Drive Dialog (Input prompt, Confirm, and Alert) */}
+      {driveDialog.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-sm w-full p-5 space-y-4 font-sans animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-2 pb-1.5 border-b border-slate-100">
+              <div className="p-1 px-2 bg-indigo-50 rounded text-indigo-700">
+                <Cloud className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">{driveDialog.title}</h3>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-slate-600 leading-normal">{driveDialog.message}</p>
+
+              {driveDialog.type === "save_prompt" && (
+                <input
+                  type="text"
+                  value={driveDialog.inputValue || ""}
+                  onChange={(e) => setDriveDialog(prev => ({ ...prev, inputValue: e.target.value }))}
+                  className="w-full p-2 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-slate-50 font-mono font-semibold"
+                  placeholder="filename.json"
+                />
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1 font-sans">
+              <button
+                type="button"
+                onClick={() => setDriveDialog(prev => ({ ...prev, isOpen: false }))}
+                className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-md text-xs text-slate-600 hover:bg-slate-50 transition cursor-pointer font-bold animate-pulse-none"
+              >
+                {driveDialog.type === "alert" ? (lang === "zh" ? "关闭" : "Close") : (lang === "zh" ? "取消" : "Cancel")}
+              </button>
+
+              {driveDialog.type === "save_prompt" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const val = driveDialog.inputValue;
+                    setDriveDialog(prev => ({ ...prev, isOpen: false }));
+                    if (driveDialog.onConfirm) driveDialog.onConfirm(val);
+                  }}
+                  disabled={!driveDialog.inputValue?.trim()}
+                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs transition font-bold cursor-pointer disabled:opacity-50"
+                >
+                  {lang === "zh" ? "开始备份" : "Backup"}
+                </button>
+              )}
+
+              {driveDialog.type === "confirm_restore" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDriveDialog(prev => ({ ...prev, isOpen: false }));
+                    if (driveDialog.onConfirm) driveDialog.onConfirm();
+                  }}
+                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs transition font-bold cursor-pointer"
+                >
+                  {lang === "zh" ? "确认恢复" : "Confirm Restore"}
+                </button>
+              )}
+
+              {driveDialog.type === "confirm_delete" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDriveDialog(prev => ({ ...prev, isOpen: false }));
+                    if (driveDialog.onConfirm) driveDialog.onConfirm();
+                  }}
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-xs transition font-bold cursor-pointer"
+                >
+                  {lang === "zh" ? "确认删除" : "Confirm Delete"}
+                </button>
+              )}
             </div>
           </div>
         </div>
